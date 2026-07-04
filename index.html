@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12151a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Verbrauchs-Tracker</title>
+<style>
+  :root{
+    --bg:#f2f4f7; --card:#ffffff; --text:#1c2430; --muted:#66707f;
+    --line:#e3e7ee; --input:#f5f7fa; --danger:#c0392b;
+    --strom:#e3a800; --gas:#e8590c; --wasser:#1c7ed6;
+    --accent:var(--strom); --accent-soft:rgba(227,168,0,.14);
+    --shadow:0 1px 3px rgba(15,23,42,.08);
+  }
+  html[data-theme="dark"]{
+    --bg:#12151a; --card:#1b2027; --text:#e8ebef; --muted:#8a93a0;
+    --line:#2a313b; --input:#12161c; --danger:#e05a4c;
+    --strom:#f5c02c; --gas:#ff7038; --wasser:#3d96ec;
+    --shadow:0 1px 3px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:system-ui,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    background:var(--bg); color:var(--text);
+    -webkit-tap-highlight-color:transparent;
+    padding:14px 14px calc(24px + env(safe-area-inset-bottom));
+  }
+  .wrap{max-width:640px; margin:0 auto; display:flex; flex-direction:column; gap:14px;}
+
+  header{display:flex; align-items:center; justify-content:space-between; padding:4px 2px;}
+  header h1{font-size:1.25rem; font-weight:800; letter-spacing:-.01em;}
+  header h1 small{display:block; font-size:.72rem; font-weight:500; color:var(--muted); letter-spacing:.04em;}
+  .iconbtn{
+    border:1px solid var(--line); background:var(--card); color:var(--text);
+    width:40px; height:40px; border-radius:12px; font-size:1.05rem; cursor:pointer;
+  }
+
+  .seg{display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; background:var(--card);
+       border:1px solid var(--line); border-radius:14px; padding:6px; box-shadow:var(--shadow);}
+  .seg button{
+    border:0; border-radius:10px; padding:10px 0; font-size:.95rem; font-weight:700;
+    background:transparent; color:var(--muted); cursor:pointer; transition:background .15s,color .15s;
+  }
+  .seg button.active{background:var(--accent); color:#fff;}
+  html[data-theme="dark"] .seg button.active{color:#101418;}
+
+  .card{background:var(--card); border:1px solid var(--line); border-radius:16px;
+        padding:14px; box-shadow:var(--shadow);}
+  .card h2{font-size:.8rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+           color:var(--muted); margin-bottom:10px;}
+
+  .stats{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
+  .stat{background:var(--accent-soft); border-radius:12px; padding:10px 8px; text-align:center;}
+  .stat b{display:block; font-size:1.05rem; font-variant-numeric:tabular-nums;}
+  .stat span{font-size:.68rem; color:var(--muted);}
+
+  #chartbox{min-height:190px;}
+  #chartbox svg{width:100%; height:auto; display:block;}
+  .empty{color:var(--muted); font-size:.9rem; text-align:center; padding:34px 10px;}
+
+  form .row{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:8px;}
+  label{display:block; font-size:.72rem; font-weight:600; color:var(--muted); margin:0 0 4px 2px;}
+  input{
+    width:100%; border:1px solid var(--line); background:var(--input); color:var(--text);
+    border-radius:10px; padding:10px; font-size:1rem; font-variant-numeric:tabular-nums;
+  }
+  input:focus{outline:2px solid var(--accent); outline-offset:1px; border-color:transparent;}
+  .btn{
+    width:100%; border:0; border-radius:12px; padding:13px; margin-top:12px;
+    font-size:1rem; font-weight:700; color:#fff; background:var(--accent); cursor:pointer;
+  }
+  html[data-theme="dark"] .btn{color:#101418;}
+  .btn.secondary{background:var(--card); color:var(--text); border:1px solid var(--line); margin-top:8px;}
+  html[data-theme="dark"] .btn.secondary{color:var(--text);}
+
+  .entry{border-top:1px solid var(--line); padding:10px 2px;}
+  .entry:first-of-type{border-top:0;}
+  .entry .head{display:flex; align-items:baseline; gap:8px;}
+  .entry .head b{font-size:.95rem;}
+  .entry .head span{font-size:.75rem; color:var(--muted); flex:1;}
+  .entry .del{border:0; background:none; color:var(--danger); font-size:1rem; cursor:pointer; padding:4px 6px;}
+  .vals{display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:6px;}
+  .val{border:1px solid var(--line); border-radius:10px; padding:6px 8px;}
+  .val small{display:block; font-size:.65rem; color:var(--muted);}
+  .val b{font-size:.9rem; font-variant-numeric:tabular-nums; font-weight:600;}
+  .val i{display:block; font-style:normal; font-size:.72rem; font-weight:700; font-variant-numeric:tabular-nums;}
+  .val i.strom{color:var(--strom);} .val i.gas{color:var(--gas);} .val i.wasser{color:var(--wasser);}
+  .val i.wechsel{color:var(--muted); font-weight:500;}
+
+  .status{font-size:.8rem; color:var(--muted); text-align:center; min-height:1.1em; margin-top:8px;}
+  footer{text-align:center; font-size:.72rem; color:var(--muted); padding-top:4px;}
+  #importfile{display:none;}
+  @media (prefers-reduced-motion:reduce){ *{transition:none !important;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Verbrauchs-Tracker<small>Strom · Gas · Wasser</small></h1>
+    <button class="iconbtn" id="themebtn" title="Hell/Dunkel umschalten" aria-label="Design umschalten">◐</button>
+  </header>
+
+  <nav class="seg" id="seg" aria-label="Verbrauchsart wählen"></nav>
+
+  <section class="card">
+    <div class="stats" id="stats"></div>
+    <div id="chartbox" role="img" aria-label="Verbrauchsdiagramm"></div>
+  </section>
+
+  <section class="card">
+    <h2>Neuer Zählerstand</h2>
+    <form id="form">
+      <label for="f_datum">Datum</label>
+      <input type="date" id="f_datum" required>
+      <div class="row">
+        <div><label for="f_strom">Strom (kWh)</label>
+             <input id="f_strom" inputmode="decimal" placeholder="z. B. 41250"></div>
+        <div><label for="f_gas">Gas (m³)</label>
+             <input id="f_gas" inputmode="decimal" placeholder="z. B. 8340,5"></div>
+        <div><label for="f_wasser">Wasser (m³)</label>
+             <input id="f_wasser" inputmode="decimal" placeholder="z. B. 612,3"></div>
+      </div>
+      <button type="submit" class="btn">Zählerstand speichern</button>
+    </form>
+    <div class="status" id="status" aria-live="polite"></div>
+  </section>
+
+  <section class="card">
+    <h2>Einträge <span id="count" style="text-transform:none; font-weight:500;"></span></h2>
+    <div id="list"></div>
+  </section>
+
+  <section class="card">
+    <h2>Daten</h2>
+    <button class="btn" id="xlsxbtn">Nach Excel exportieren (.xlsx)</button>
+    <button class="btn secondary" id="backupbtn">Sicherung speichern (.json)</button>
+    <button class="btn secondary" id="importbtn">Sicherung / Desktop-Daten laden</button>
+    <input type="file" id="importfile" accept=".json,application/json">
+  </section>
+
+  <footer>Alle Daten bleiben lokal auf diesem Gerät gespeichert.</footer>
+</div>
+
+<script>
+"use strict";
+const UTILITIES = {
+  strom:  {label:"Strom",  einheit:"kWh", cssvar:"--strom"},
+  gas:    {label:"Gas",    einheit:"m³",  cssvar:"--gas"},
+  wasser: {label:"Wasser", einheit:"m³",  cssvar:"--wasser"},
+};
+const KEYS = Object.keys(UTILITIES);
+const LS_DATA = "vt_readings", LS_THEME = "vt_theme", LS_UTIL = "vt_util";
+
+let readings = [];          // [{datum:"YYYY-MM-DD", strom, gas, wasser}]
+let currentUtil = localStorage.getItem(LS_UTIL) || "strom";
+
+/* ---------- Hilfsfunktionen ---------- */
+function parseNumber(t){
+  t = (t||"").trim().replace(/\s/g,"");
+  if(t === "") return null;
+  t = t.replace(/\./g, t.includes(",") ? "" : ".").replace(",",".");
+  const v = parseFloat(t);
+  return isFinite(v) ? v : null;
+}
+function fmt(v, dec){
+  if(v === null || v === undefined) return "–";
+  return v.toLocaleString("de-DE",{minimumFractionDigits:0, maximumFractionDigits:dec===undefined?1:dec});
+}
+function deDate(iso){
+  const [y,m,d] = iso.split("-");
+  return d + "." + m + "." + y;
+}
+function daysBetween(a,b){
+  return Math.round((new Date(b) - new Date(a)) / 86400000);
+}
+
+/* ---------- Daten ---------- */
+function loadData(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(LS_DATA) || "[]");
+    readings = sanitize(raw);
+  }catch(e){ readings = []; }
+}
+function sanitize(raw){
+  const out = [];
+  for(const r of (Array.isArray(raw) ? raw : [])){
+    let d = (r.datum || "").trim();
+    const m = d.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);      // dd.mm.yyyy -> ISO
+    if(m) d = m[3] + "-" + m[2].padStart(2,"0") + "-" + m[1].padStart(2,"0");
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    const row = {datum:d};
+    for(const k of KEYS){
+      const v = r[k];
+      row[k] = (typeof v === "number" && isFinite(v)) ? v :
+               (typeof v === "string" ? parseNumber(v) : null);
+    }
+    out.push(row);
+  }
+  out.sort((a,b)=> a.datum < b.datum ? -1 : 1);
+  return out;
+}
+function saveData(){
+  localStorage.setItem(LS_DATA, JSON.stringify(readings));
+}
+function computeConsumption(){
+  const periods = [];
+  for(let i=1; i<readings.length; i++){
+    const prev = readings[i-1], cur = readings[i];
+    const row = {datum:cur.datum, tage:daysBetween(prev.datum, cur.datum)};
+    for(const k of KEYS){
+      const a = prev[k], b = cur[k];
+      if(a === null || b === null){ row[k] = null; row[k+"_wechsel"] = false; }
+      else if(b - a < 0){ row[k] = null; row[k+"_wechsel"] = true; }   // Zählerwechsel
+      else { row[k] = b - a; row[k+"_wechsel"] = false; }
+    }
+    periods.push(row);
+  }
+  return periods;
+}
+
+/* ---------- Aktionen ---------- */
+function addReading(ev){
+  ev.preventDefault();
+  const d = document.getElementById("f_datum").value;
+  if(!d){ setStatus("Bitte ein Datum wählen."); return; }
+  const vals = {};
+  for(const k of KEYS) vals[k] = parseNumber(document.getElementById("f_"+k).value);
+  if(KEYS.every(k => vals[k] === null)){
+    setStatus("Bitte mindestens einen Zählerstand eingeben."); return;
+  }
+  const existing = readings.find(r => r.datum === d);
+  if(existing){
+    if(!confirm("Für den " + deDate(d) + " existiert bereits ein Eintrag. Überschreiben?")) return;
+    for(const k of KEYS) if(vals[k] !== null) existing[k] = vals[k];
+  }else{
+    readings.push({datum:d, ...vals});
+  }
+  readings.sort((a,b)=> a.datum < b.datum ? -1 : 1);
+  saveData();
+  for(const k of KEYS) document.getElementById("f_"+k).value = "";
+  setStatus("Eintrag vom " + deDate(d) + " gespeichert.");
+  renderAll();
+}
+function deleteReading(iso){
+  if(!confirm("Eintrag vom " + deDate(iso) + " wirklich löschen?")) return;
+  readings = readings.filter(r => r.datum !== iso);
+  saveData();
+  setStatus("Eintrag gelöscht.");
+  renderAll();
+}
+function setStatus(t){
+  const el = document.getElementById("status");
+  el.textContent = t;
+  clearTimeout(el._t);
+  el._t = setTimeout(()=>{ el.textContent = ""; }, 6000);
+}
+
+/* ---------- Darstellung ---------- */
+function setAccent(){
+  const c = getComputedStyle(document.documentElement)
+              .getPropertyValue(UTILITIES[currentUtil].cssvar).trim();
+  document.documentElement.style.setProperty("--accent", c);
+  document.documentElement.style.setProperty("--accent-soft", c + "24");
+}
+function renderSeg(){
+  const seg = document.getElementById("seg");
+  seg.innerHTML = "";
+  for(const k of KEYS){
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = UTILITIES[k].label;
+    b.className = k === currentUtil ? "active" : "";
+    b.onclick = () => { currentUtil = k; localStorage.setItem(LS_UTIL,k); setAccent(); renderAll(); };
+    seg.appendChild(b);
+  }
+}
+function renderStats(){
+  const box = document.getElementById("stats");
+  const per = computeConsumption().filter(p => p[currentUtil] !== null);
+  const u = UTILITIES[currentUtil].einheit;
+  if(!per.length){ box.innerHTML = ""; return; }
+  const total = per.reduce((s,p)=> s+p[currentUtil], 0);
+  const days  = per.reduce((s,p)=> s+p.tage, 0);
+  const last  = per[per.length-1];
+  box.innerHTML =
+    stat(fmt(days ? total/days : 0, 2) + " " + u, "Ø pro Tag") +
+    stat(fmt(last[currentUtil]) + " " + u, "Letzter Zeitraum (" + last.tage + " Tage)") +
+    stat(fmt(total) + " " + u, "Gesamt erfasst");
+  function stat(v,l){ return '<div class="stat"><b>' + v + "</b><span>" + l + "</span></div>"; }
+}
+function renderChart(){
+  const box = document.getElementById("chartbox");
+  const meta = UTILITIES[currentUtil];
+  const pts = computeConsumption()
+      .filter(p => p[currentUtil] !== null)
+      .map(p => ({x:new Date(p.datum).getTime(), y:p[currentUtil], d:p.datum}));
+  if(pts.length < 2){
+    box.innerHTML = '<div class="empty">Ab zwei Ablesungen mit Verbrauchswerten erscheint hier das Diagramm.</div>';
+    if(pts.length === 1)
+      box.querySelector(".empty").textContent =
+        "Erster Verbrauchswert erfasst – ab der nächsten Ablesung erscheint hier der Verlauf.";
+    return;
+  }
+  const W=600, H=230, L=52, R=14, T=16, B=34;
+  const xmin = pts[0].x, xmax = pts[pts.length-1].x;
+  let ymax = Math.max(...pts.map(p=>p.y)); if(ymax<=0) ymax = 1;
+  ymax *= 1.15;
+  const X = t => L + (t-xmin)/(xmax-xmin||1)*(W-L-R);
+  const Y = v => T + (1 - v/ymax)*(H-T-B);
+  const css = getComputedStyle(document.documentElement);
+  const cAcc = css.getPropertyValue(meta.cssvar).trim();
+  const cGrid = css.getPropertyValue("--line").trim();
+  const cMut = css.getPropertyValue("--muted").trim();
+
+  // y-Achse: 4 runde Ticks
+  const step = niceStep(ymax/4);
+  let grid="", labels="";
+  for(let v=step; v<=ymax; v+=step){
+    const y = Y(v);
+    grid += `<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="${cGrid}" stroke-width="1"/>`;
+    labels += `<text x="${L-6}" y="${y+3}" text-anchor="end" font-size="10" fill="${cMut}">${fmt(v,0)}</text>`;
+  }
+  // x-Achse: max. 6 Datumslabels
+  const n = Math.min(6, pts.length);
+  for(let i=0; i<n; i++){
+    const p = pts[Math.round(i*(pts.length-1)/(n-1||1))];
+    const [y,m] = p.d.split("-");
+    labels += `<text x="${X(p.x)}" y="${H-10}" text-anchor="middle" font-size="10" fill="${cMut}">${m}/${y.slice(2)}</text>`;
+  }
+  const line = pts.map((p,i)=>(i?"L":"M")+X(p.x).toFixed(1)+" "+Y(p.y).toFixed(1)).join(" ");
+  const area = line + ` L${X(xmax).toFixed(1)} ${Y(0)} L${X(xmin).toFixed(1)} ${Y(0)} Z`;
+  const dots = pts.map(p=>`<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="3.2" fill="${cAcc}"/>`).join("");
+
+  box.innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+       <text x="${L}" y="11" font-size="11" font-weight="700" fill="${cMut}">${meta.label} – Verbrauch je Ableseperiode (${meta.einheit})</text>
+       ${grid}
+       <path d="${area}" fill="${cAcc}" opacity="0.13"/>
+       <path d="${line}" fill="none" stroke="${cAcc}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+       ${dots}${labels}
+     </svg>`;
+}
+function niceStep(raw){
+  const p = Math.pow(10, Math.floor(Math.log10(raw||1)));
+  for(const m of [1,2,2.5,5,10]) if(raw <= m*p) return m*p;
+  return 10*p;
+}
+function renderList(){
+  const list = document.getElementById("list");
+  document.getElementById("count").textContent =
+    readings.length ? "(" + readings.length + ")" : "";
+  if(!readings.length){
+    list.innerHTML = '<div class="empty">Noch keine Einträge. Trage oben deinen ersten Zählerstand ein – oder lade unten die Daten aus der Desktop-Version.</div>';
+    return;
+  }
+  const per = {};
+  for(const p of computeConsumption()) per[p.datum] = p;
+  let html = "";
+  for(let i=readings.length-1; i>=0; i--){          // neueste zuerst
+    const r = readings[i], p = per[r.datum];
+    html += '<div class="entry"><div class="head"><b>' + deDate(r.datum) + "</b><span>" +
+            (p ? p.tage + " Tage seit letzter Ablesung" : "Erste Ablesung") +
+            '</span><button class="del" title="Eintrag löschen" aria-label="Eintrag löschen" data-d="' +
+            r.datum + '">✕</button></div><div class="vals">';
+    for(const k of KEYS){
+      const m = UTILITIES[k];
+      let sub = "";
+      if(p){
+        if(p[k+"_wechsel"]) sub = '<i class="wechsel">Zählerwechsel</i>';
+        else if(p[k] !== null) sub = '<i class="'+k+'">+ ' + fmt(p[k]) + " " + m.einheit + "</i>";
+      }
+      html += '<div class="val"><small>' + m.label + "</small><b>" + fmt(r[k]) + "</b>" + sub + "</div>";
+    }
+    html += "</div></div>";
+  }
+  list.innerHTML = html;
+  list.querySelectorAll(".del").forEach(b => b.onclick = () => deleteReading(b.dataset.d));
+}
+function renderAll(){ renderSeg(); renderStats(); renderChart(); renderList(); }
+
+/* ---------- Export / Import ---------- */
+function download(name, blob){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 800);
+}
+function exportBackup(){
+  if(!readings.length){ setStatus("Keine Daten vorhanden."); return; }
+  const blob = new Blob([JSON.stringify(readings, null, 2)], {type:"application/json"});
+  download("verbrauchsdaten.json", blob);
+  setStatus("Sicherung erstellt.");
+}
+function importBackup(file){
+  const fr = new FileReader();
+  fr.onload = () => {
+    let raw;
+    try{ raw = JSON.parse(fr.result); }
+    catch(e){ alert("Die Datei konnte nicht gelesen werden (kein gültiges JSON)."); return; }
+    const neu = sanitize(raw);
+    if(!neu.length){ alert("Die Datei enthält keine gültigen Einträge."); return; }
+    let added = 0, replaced = 0;
+    for(const n of neu){
+      const ex = readings.find(r => r.datum === n.datum);
+      if(ex){ Object.assign(ex, n); replaced++; }
+      else { readings.push(n); added++; }
+    }
+    readings.sort((a,b)=> a.datum < b.datum ? -1 : 1);
+    saveData(); renderAll();
+    setStatus(added + " Einträge übernommen" + (replaced ? ", " + replaced + " aktualisiert." : "."));
+  };
+  fr.readAsText(file);
+}
+function exportCSV(){
+  const per = computeConsumption();
+  const num = v => v === null || v === undefined ? "" : String(v).replace(".",",");
+  let s = "\uFEFFZählerstände\nDatum;Strom (kWh);Gas (m³);Wasser (m³)\n";
+  for(const r of readings) s += deDate(r.datum)+";"+num(r.strom)+";"+num(r.gas)+";"+num(r.wasser)+"\n";
+  s += "\nVerbrauch je Zeitraum\nDatum;Tage;Strom (kWh);Gas (m³);Wasser (m³)\n";
+  for(const p of per) s += deDate(p.datum)+";"+p.tage+";"+num(p.strom)+";"+num(p.gas)+";"+num(p.wasser)+"\n";
+  download("Verbrauch_" + new Date().toISOString().slice(0,10) + ".csv",
+           new Blob([s], {type:"text/csv;charset=utf-8"}));
+  setStatus("Als CSV exportiert (in Excel zu öffnen).");
+}
+function exportExcel(){
+  if(!readings.length){ setStatus("Keine Daten zum Exportieren."); return; }
+  const build = () => {
+    const wb = XLSX.utils.book_new();
+    const s1 = [["Datum","Strom (kWh)","Gas (m³)","Wasser (m³)"]];
+    for(const r of readings) s1.push([deDate(r.datum), r.strom, r.gas, r.wasser]);
+    const ws1 = XLSX.utils.aoa_to_sheet(s1);
+    ws1["!cols"] = [{wch:12},{wch:13},{wch:11},{wch:13}];
+    XLSX.utils.book_append_sheet(wb, ws1, "Zählerstände");
+    const s2 = [["Datum","Tage","Strom (kWh)","Gas (m³)","Wasser (m³)"]];
+    for(const p of computeConsumption()) s2.push([deDate(p.datum), p.tage, p.strom, p.gas, p.wasser]);
+    const ws2 = XLSX.utils.aoa_to_sheet(s2);
+    ws2["!cols"] = [{wch:12},{wch:6},{wch:13},{wch:11},{wch:13}];
+    XLSX.utils.book_append_sheet(wb, ws2, "Verbrauch");
+    XLSX.writeFile(wb, "Verbrauch_" + new Date().toISOString().slice(0,10) + ".xlsx");
+    setStatus("Excel-Datei erstellt.");
+  };
+  if(window.XLSX){ build(); return; }
+  setStatus("Lade Excel-Modul …");
+  const sc = document.createElement("script");
+  sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+  sc.onload = build;
+  sc.onerror = () => {
+    if(confirm("Für den Excel-Export wird einmalig eine Internetverbindung benötigt.\nStattdessen als CSV-Datei exportieren (funktioniert offline, in Excel zu öffnen)?"))
+      exportCSV();
+    else setStatus("");
+  };
+  document.head.appendChild(sc);
+}
+
+/* ---------- Theme ---------- */
+function applyTheme(t){
+  const dark = t === "dark" || (t === "system" &&
+    window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  setAccent(); renderStats(); renderChart();
+}
+function toggleTheme(){
+  const cur = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  localStorage.setItem(LS_THEME, cur);
+  applyTheme(cur);
+}
+
+/* ---------- Start ---------- */
+document.getElementById("form").addEventListener("submit", addReading);
+document.getElementById("themebtn").addEventListener("click", toggleTheme);
+document.getElementById("xlsxbtn").addEventListener("click", exportExcel);
+document.getElementById("backupbtn").addEventListener("click", exportBackup);
+document.getElementById("importbtn").addEventListener("click",
+  () => document.getElementById("importfile").click());
+document.getElementById("importfile").addEventListener("change", function(){
+  if(this.files[0]) importBackup(this.files[0]);
+  this.value = "";
+});
+document.getElementById("f_datum").value = new Date().toISOString().slice(0,10);
+
+loadData();
+applyTheme(localStorage.getItem(LS_THEME) || "system");
+renderAll();
+</script>
+</body>
+</html>
