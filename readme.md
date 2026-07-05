@@ -1,6 +1,6 @@
 # 📈 LocalMeterLog
 
-Ein minimalistischer, blitzschneller und datenschutzfreundlicher Tracker für heimische Energiezähler. Entwickelt für die einfache Erfassung, Visualisierung und Auswertung von Verbrauchsdaten – komplett offline und ohne Cloud-Zwang.
+Eine minimalistische, blitzschnelle und datenschutzfreundliche Anwendung für heimische Energiezähler. Entwickelt für die einfache Erfassung, Visualisierung und Auswertung von Verbrauchsdaten – komplett offline und ohne Cloud-Zwang.
 
 ## ✨ Features
 
