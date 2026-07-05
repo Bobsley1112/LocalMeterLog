@@ -159,11 +159,11 @@
     <div id="list"></div>
   </section>
 
-  <section class="card">
+<section class="card">
     <h2>Daten</h2>
-    <button class="btn" id="xlsxbtn">Nach Excel exportieren (.xlsx)</button>
+    <button class="btn secondary" id="xlsxbtn">Nach Excel exportieren (.xlsx)</button>
     <button class="btn secondary" id="backupbtn">Sicherung speichern (.json)</button>
-    <button class="btn secondary" id="importbtn">Sicherung / Desktop-Daten laden</button>
+    <button class="btn secondary" id="importbtn">Sicherung laden (.json)</button>
     <input type="file" id="importfile" accept=".json,application/json">
   </section>
 
@@ -206,6 +206,7 @@ function daysBetween(a,b){
 }
 
 /* ---------- Filter-Logik ---------- */
+/* ---------- Filter-Logik ---------- */
 function getFilteredPeriods() {
   return computeConsumption().filter(p => {
     if (filterStart && p.datum < filterStart) return false;
@@ -225,12 +226,19 @@ function getFilteredReadings() {
 function applyFilter() {
   filterStart = document.getElementById("f_start").value;
   filterEnd = document.getElementById("f_ende").value;
-  
-  // Button-Status aktualisieren
-  document.querySelectorAll("#btn_filter_alle, #btn_filter_jahr, #btn_filter_monat").forEach(b => b.classList.remove("active"));
-  if(!filterStart && !filterEnd) document.getElementById("btn_filter_alle").classList.add("active");
+  renderAll(); 
+}
 
-  renderAll(); // Aktualisiert Statistiken, Diagramm und Liste
+function handleManualFilter() {
+  document.querySelectorAll("#btn_filter_alle, #btn_filter_jahr, #btn_filter_monat").forEach(b => b.classList.remove("active"));
+  
+  const start = document.getElementById("f_start").value;
+  const end = document.getElementById("f_ende").value;
+  if(!start && !end) {
+    document.getElementById("btn_filter_alle").classList.add("active");
+  }
+  
+  applyFilter();
 }
 
 function setQuickFilter(days) {
@@ -558,12 +566,14 @@ document.getElementById("importfile").addEventListener("change", function(){
 });
 
 // Event Listener für die neuen Filter
-document.getElementById("f_start").addEventListener("change", applyFilter);
-document.getElementById("f_ende").addEventListener("change", applyFilter);
+// Event Listener für die neuen Filter
+document.getElementById("f_start").addEventListener("change", handleManualFilter);
+document.getElementById("f_ende").addEventListener("change", handleManualFilter);
+
 document.getElementById("btn_filter_alle").addEventListener("click", () => {
   document.getElementById("f_start").value = "";
   document.getElementById("f_ende").value = "";
-  applyFilter();
+  handleManualFilter();
 });
 document.getElementById("btn_filter_jahr").addEventListener("click", () => setQuickFilter(365));
 document.getElementById("btn_filter_monat").addEventListener("click", () => setQuickFilter(30));
