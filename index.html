@@ -114,7 +114,7 @@
   .meterbox{display:flex; flex-direction:column; gap:6px; border:1px solid var(--line);
             border-radius:10px; padding:8px 10px; min-width:210px; flex:1;}
   .meterbox.new{border-style:dashed;}
-  .meterbox .toprow{display:flex; align-items:center; gap:8px;}
+  .meterbox .toprow{display:flex; align-items:center; gap:4px;}
   .meterbox .toprow label{display:flex; align-items:center; gap:6px; font-size:.85rem;
             font-weight:600; color:var(--text); cursor:pointer; flex:1; margin:0;}
   .meterbox .bidilabel{display:flex; align-items:center; gap:6px; font-size:.72rem;
@@ -122,6 +122,20 @@
   .meterbox input[type="checkbox"]{width:auto; transform:scale(1.15); flex:none;}
   .meterbox input[type="text"], .meterbox input:not([type]){font-size:.82rem; padding:7px 8px;}
   .meterbox .rmbtn{border:0; background:none; color:var(--danger); font-size:.95rem; cursor:pointer; padding:2px 4px;}
+  .meterbox .editbtn{color:var(--muted);}
+
+  .price-group {
+    background: var(--input);
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    margin-bottom: 8px;
+  }
+  .price-group-title {
+    font-size: .8rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
 
   @media (prefers-reduced-motion:reduce){ *{transition:none !important;} }
 </style>
@@ -140,8 +154,8 @@
   </section>
 
   <section class="card">
-    <h2>Tarife (Arbeitspreis)</h2>
-    <div id="settings_prices" class="row"></div>
+    <h2>Tarife (Arbeitspreis & Grundpreis)</h2>
+    <div id="settings_prices"></div>
   </section>
 
   <nav class="seg" id="seg" aria-label="Verbrauchsart wählen"></nav>
@@ -187,7 +201,6 @@
     <div id="list"></div>
   </section>
 
-
   <section class="card">
     <h2>Daten</h2>
     <button class="btn secondary" id="xlsxbtn">Nach Excel exportieren (.xlsx)</button>
@@ -203,6 +216,7 @@
 <script>
 "use strict";
 
+// Ursprüngliche Master-Einträge als Initialisierungs-Basis
 const MASTER_UTILITIES = {
   strom:      {label:"Strom",      einheit:"kWh", cssvar:"--strom"},
   gas:        {label:"Gas",        einheit:"m³",  cssvar:"--gas"},
@@ -216,16 +230,31 @@ const CHART_COLOR_AB = "#00bfa5";
 
 const LS_DATA="lml_readings", LS_THEME="lml_theme", LS_UTIL="lml_util", LS_ACTIVE="lml_active",
       LS_CUSTOM="lml_custom_utilities", LS_METERNR="lml_meternumbers", LS_BIDI="lml_bidirectional",
-      LS_PRICES="lml_prices", LS_PRICES_AB="lml_prices_ab";
+      LS_PRICES="lml_prices", LS_PRICES_AB="lml_prices_ab", LS_PRICES_BASE="lml_prices_base";
 
-let customUtilities = JSON.parse(localStorage.getItem(LS_CUSTOM)) || {};
+let customUtilities = JSON.parse(localStorage.getItem(LS_CUSTOM));
+let activeKeys = JSON.parse(localStorage.getItem(LS_ACTIVE)) || ["strom", "gas", "wasser"];
+
+// Migration / Initialisierung: Falls noch keine customUtilities existieren
+if (!customUtilities || Object.keys(customUtilities).length === 0) {
+  customUtilities = Object.assign({}, MASTER_UTILITIES);
+  localStorage.setItem(LS_CUSTOM, JSON.stringify(customUtilities));
+} else {
+  // Für Abwärtskompatibilität, falls aktive Keys noch nicht im custom-Objekt waren
+  for (const k of activeKeys) {
+    if (!customUtilities[k] && MASTER_UTILITIES[k]) {
+      customUtilities[k] = MASTER_UTILITIES[k];
+    }
+  }
+  localStorage.setItem(LS_CUSTOM, JSON.stringify(customUtilities));
+}
+
 let meterNumbers = JSON.parse(localStorage.getItem(LS_METERNR)) || {};
 let bidirectional = JSON.parse(localStorage.getItem(LS_BIDI)) || [];
-let activeKeys = JSON.parse(localStorage.getItem(LS_ACTIVE)) || ["strom", "gas", "wasser"];
 let UTILITIES = {};
 let KEYS = [];
 
-function allUtilDefs(){ return Object.assign({}, MASTER_UTILITIES, customUtilities); }
+function allUtilDefs(){ return customUtilities; }
 
 function updateActiveUtilities() {
   const all = allUtilDefs();
@@ -243,6 +272,7 @@ let filterStart = "";
 let filterEnd = "";
 let prices = JSON.parse(localStorage.getItem(LS_PRICES)) || {};
 let pricesAb = JSON.parse(localStorage.getItem(LS_PRICES_AB)) || {};
+let pricesBase = JSON.parse(localStorage.getItem(LS_PRICES_BASE)) || {};
 
 /* ---------- Hilfsfunktionen ---------- */
 function parseNumber(t){
@@ -461,17 +491,18 @@ function renderSettings() {
   for (const k in all) {
     const def = all[k];
     const isChecked = activeKeys.includes(k) ? "checked" : "";
-    const isCustom = !MASTER_UTILITIES[k];
     const isBidiChecked = bidirectional.includes(k) ? "checked" : "";
     const nrVal = (meterNumbers[k] || "").replace(/"/g,"&quot;");
+    
     html += `
       <div class="meterbox">
         <div class="toprow">
           <label>
             <input type="checkbox" value="${k}" ${isChecked} onchange="toggleUtility(this)">
-            ${def.label}
+            ${def.label} (${def.einheit})
           </label>
-          ${isCustom ? `<button type="button" class="rmbtn" title="Zähler löschen" aria-label="Zähler löschen" onclick="deleteCustomUtility('${k}')">✕</button>` : ""}
+          <button type="button" class="rmbtn editbtn" title="Zähler bearbeiten" aria-label="Zähler bearbeiten" onclick="editUtility('${k}')">✎</button>
+          <button type="button" class="rmbtn" title="Zähler löschen" aria-label="Zähler löschen" onclick="deleteCustomUtility('${k}')">✕</button>
         </div>
         <label class="bidilabel">
           <input type="checkbox" ${isBidiChecked} onchange="toggleBidirectional('${k}', this)">
@@ -564,508 +595,42 @@ function addCustomUtility(){
   renderAll();
 }
 
-function deleteCustomUtility(key){
+function editUtility(key) {
   const def = customUtilities[key];
-  if(!def) return;
-  if(!confirm("Zähler „" + def.label + "“ inkl. Definition entfernen? Bereits erfasste Messwerte bleiben in den Daten, werden aber nicht mehr angezeigt.")) return;
-  delete customUtilities[key];
-  activeKeys = activeKeys.filter(k => k !== key);
-  bidirectional = bidirectional.filter(k => k !== key);
-  delete meterNumbers[key];
-  delete prices[key];
-  delete pricesAb[key];
+  const newName = prompt("Name des Zählers (z. B. Strom, Wärmepumpe):", def.label);
+  if (newName === null) return;
+  const newUnit = prompt("Einheit des Zählers (z. B. kWh, m³, l):", def.einheit);
+  if (newUnit === null) return;
+
+  if (newName.trim()) def.label = newName.trim();
+  if (newUnit.trim()) def.einheit = newUnit.trim();
+
   localStorage.setItem(LS_CUSTOM, JSON.stringify(customUtilities));
-  localStorage.setItem(LS_ACTIVE, JSON.stringify(activeKeys));
-  localStorage.setItem(LS_BIDI, JSON.stringify(bidirectional));
-  localStorage.setItem(LS_METERNR, JSON.stringify(meterNumbers));
-  localStorage.setItem(LS_PRICES, JSON.stringify(prices));
-  localStorage.setItem(LS_PRICES_AB, JSON.stringify(pricesAb));
-  if(activeKeys.length === 0){
-    activeKeys = ["strom"];
-    localStorage.setItem(LS_ACTIVE, JSON.stringify(activeKeys));
-  }
   updateActiveUtilities();
-  if (!activeKeys.includes(currentUtil)) {
-    currentUtil = activeKeys[0];
-    localStorage.setItem(LS_UTIL, currentUtil);
-  }
   renderSettings();
   renderPrices();
   renderFormInputs();
   renderAll();
 }
 
-function renderPrices() {
-  const container = document.getElementById("settings_prices");
-  container.innerHTML = "";
-  for (const k of activeKeys) {
-    const u = UTILITIES[k];
-    if(!u) continue;
-    const isBidi = bidirectional.includes(k);
-    const val = prices[k] !== undefined ? String(prices[k]).replace(".", ",") : "";
-    container.innerHTML += `
-      <div>
-        <label for="p_${k}">${u.label}${isBidi ? " Bezug" : ""} (€/${u.einheit})</label>
-        <input id="p_${k}" inputmode="decimal" placeholder="z. B. 0,35" value="${val}" onchange="savePrice('${k}', this.value)">
-      </div>
-    `;
-    if(isBidi){
-      const valAb = pricesAb[k] !== undefined ? String(pricesAb[k]).replace(".", ",") : "";
-      container.innerHTML += `
-        <div>
-          <label for="pab_${k}">${u.label} Einspeisung (€/${u.einheit})</label>
-          <input id="pab_${k}" inputmode="decimal" placeholder="z. B. 0,08" value="${valAb}" onchange="savePriceAb('${k}', this.value)">
-        </div>
-      `;
-    }
-  }
-}
-
-function savePrice(k, val) {
-  const num = parseNumber(val);
-  if (num !== null) {
-    prices[k] = num;
-  } else {
-    delete prices[k];
-  }
-  localStorage.setItem(LS_PRICES, JSON.stringify(prices));
-  renderAll();
-}
-
-function savePriceAb(k, val) {
-  const num = parseNumber(val);
-  if (num !== null) {
-    pricesAb[k] = num;
-  } else {
-    delete pricesAb[k];
-  }
-  localStorage.setItem(LS_PRICES_AB, JSON.stringify(pricesAb));
-  renderAll();
-}
-
-function renderFormInputs() {
-  const container = document.getElementById("form_inputs");
-  container.innerHTML = "";
-  for (const k of KEYS) {
-    const u = UTILITIES[k];
-    if(bidirectional.includes(k)){
-      container.innerHTML += `
-        <div>
-          <label for="f_${k}">${u.label} Bezug (${u.einheit})</label>
-          <input id="f_${k}" inputmode="decimal" placeholder="Neuer Wert">
-        </div>
-        <div>
-          <label for="f_${k}_ab">${u.label} Einspeisung (${u.einheit})</label>
-          <input id="f_${k}_ab" inputmode="decimal" placeholder="Neuer Wert">
-        </div>
-      `;
-    }else{
-      container.innerHTML += `
-        <div>
-          <label for="f_${k}">${u.label} (${u.einheit})</label>
-          <input id="f_${k}" inputmode="decimal" placeholder="Neuer Wert">
-        </div>
-      `;
-    }
-  }
-}
-
-function renderSeg(){
-  const seg = document.getElementById("seg");
-  seg.innerHTML = "";
-  for(const k of KEYS){
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = UTILITIES[k].label;
-    b.className = k === currentUtil ? "active" : "";
-    b.onclick = () => { currentUtil = k; localStorage.setItem(LS_UTIL,k); setAccent(); renderAll(); };
-    seg.appendChild(b);
-  }
-}
-
-function renderMeterInfo(){
-  const el = document.getElementById("meterinfo");
-  if(!el) return;
-  const nr = meterNumbers[currentUtil];
-  el.textContent = nr ? "Zähler-Nr.: " + nr : "";
-}
-
-function renderStats(){
-  const box = document.getElementById("stats");
-  const per = getFilteredPeriods();
-  const meta = UTILITIES[currentUtil];
-  const u = meta.einheit;
-  const isBidi = bidirectional.includes(currentUtil);
-
-  function stat(v,l){ return '<div class="stat"><b>' + v + "</b><span>" + l + "</span></div>"; }
-
-  if(!isBidi){
-    const rows = per.filter(p => p[currentUtil] !== null);
-    if(!rows.length){ box.innerHTML = ""; return; }
-    const total = rows.reduce((s,p)=> s+p[currentUtil], 0);
-    const days  = rows.reduce((s,p)=> s+p.tage, 0);
-    const last  = rows[rows.length-1];
-    let html =
-      stat(fmt(days ? total/days : 0, 2) + " " + u, "Ø pro Tag") +
-      stat(fmt(last[currentUtil]) + " " + u, "Letzter Zeitraum (" + last.tage + " Tage)") +
-      stat(fmt(total) + " " + u, "Gesamt erfasst");
-    const price = prices[currentUtil];
-    if (price !== undefined) html += stat(fmt(total*price, 2) + " €", "Kosten (Gesamt)");
-    box.innerHTML = html;
-  }else{
-    const rowsB = per.filter(p => p[currentUtil] !== null);
-    const rowsAb = per.filter(p => p[currentUtil+"_ab"] !== null);
-    if(!rowsB.length && !rowsAb.length){ box.innerHTML = ""; return; }
-    const totalB = rowsB.reduce((s,p)=> s+p[currentUtil], 0);
-    const totalAb = rowsAb.reduce((s,p)=> s+p[currentUtil+"_ab"], 0);
-    const days = (rowsB.length ? rowsB : rowsAb).reduce((s,p)=> s+p.tage, 0);
-    const netto = totalB - totalAb;
-    let html =
-      stat(fmt(totalB) + " " + u, "Bezug gesamt") +
-      stat(fmt(totalAb) + " " + u, "Einspeisung gesamt") +
-      stat(fmt(netto) + " " + u, "Netto (Bezug − Einspeisung)") +
-      stat(fmt(days ? netto/days : 0, 2) + " " + u, "Ø Netto pro Tag");
-    const priceB = prices[currentUtil];
-    const priceAb = pricesAb[currentUtil];
-    if(priceB !== undefined) html += stat(fmt(totalB*priceB, 2) + " €", "Kosten Bezug");
-    if(priceAb !== undefined) html += stat(fmt(totalAb*priceAb, 2) + " €", "Vergütung Einspeisung");
-    if(priceB !== undefined && priceAb !== undefined)
-      html += stat(fmt(totalB*priceB - totalAb*priceAb, 2) + " €", "Kosten Netto");
-    box.innerHTML = html;
-  }
-}
-
-function buildSeriesSvg(pts, color, X, Y){
-  if(pts.length < 2) return "";
-  const line = pts.map((p,i)=>(i?"L":"M")+X(p.x).toFixed(1)+" "+Y(p.y).toFixed(1)).join(" ");
-  const area = line + ` L${X(pts[pts.length-1].x).toFixed(1)} ${Y(0)} L${X(pts[0].x).toFixed(1)} ${Y(0)} Z`;
-  const dots = pts.map(p=>`<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="3.2" fill="${color}"/>`).join("");
-  return `<path d="${area}" fill="${color}" opacity="0.13"/><path d="${line}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
-}
-
-function renderChart(){
-  const box = document.getElementById("chartbox");
-  const meta = UTILITIES[currentUtil];
-  const isBidi = bidirectional.includes(currentUtil);
-  const periods = getFilteredPeriods();
-
-  const ptsB = periods.filter(p => p[currentUtil] !== null && p[currentUtil] !== undefined)
-      .map(p => ({x:new Date(p.datum).getTime(), y:p[currentUtil], d:p.datum}));
-  const ptsAb = isBidi ? periods.filter(p => p[currentUtil+"_ab"] !== null && p[currentUtil+"_ab"] !== undefined)
-      .map(p => ({x:new Date(p.datum).getTime(), y:p[currentUtil+"_ab"], d:p.datum})) : [];
-
-  if(ptsB.length < 2 && ptsAb.length < 2){
-    box.innerHTML = '<div class="empty">Ab zwei Ablesungen mit Verbrauchswerten erscheint hier das Diagramm.</div>';
-    if(ptsB.length + ptsAb.length === 1)
-      box.querySelector(".empty").textContent =
-        "Erster Verbrauchswert erfasst – ab der nächsten Ablesung erscheint hier der Verlauf.";
+function deleteCustomUtility(key){
+  if (Object.keys(customUtilities).length <= 1) {
+    alert("Der letzte verbleibende Zähler kann nicht gelöscht werden. Du kannst ihn aber über das Stift-Symbol umbenennen.");
     return;
   }
-
-  const W=600, H=230, L=52, R=14, T=16, B=34;
-  const allPts = ptsB.concat(ptsAb);
-  const xmin = Math.min(...allPts.map(p=>p.x));
-  const xmax = Math.max(...allPts.map(p=>p.x));
-  let ymax = Math.max(...allPts.map(p=>p.y)); if(ymax<=0) ymax = 1;
-  ymax *= 1.15;
-  const X = t => L + (t-xmin)/(xmax-xmin||1)*(W-L-R);
-  const Y = v => T + (1 - v/ymax)*(H-T-B);
-  const css = getComputedStyle(document.documentElement);
-  const cAcc = utilColorValue(currentUtil);
-  const cGrid = css.getPropertyValue("--line").trim();
-  const cMut = css.getPropertyValue("--muted").trim();
-
-  const step = niceStep(ymax/4);
-  let grid="", labels="";
-  for(let v=step; v<=ymax; v+=step){
-    const y = Y(v);
-    grid += `<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="${cGrid}" stroke-width="1"/>`;
-    labels += `<text x="${L-6}" y="${y+3}" text-anchor="end" font-size="10" fill="${cMut}">${fmt(v,0)}</text>`;
-  }
-  const labelSrc = ptsB.length ? ptsB : ptsAb;
-  const n = Math.min(6, labelSrc.length);
-  for(let i=0; i<n; i++){
-    const p = labelSrc[Math.round(i*(labelSrc.length-1)/(n-1||1))];
-    const [y,m] = p.d.split("-");
-    labels += `<text x="${X(p.x)}" y="${H-10}" text-anchor="middle" font-size="10" fill="${cMut}">${m}/${y.slice(2)}</text>`;
-  }
-
-  const seriesB = buildSeriesSvg(ptsB, cAcc, X, Y);
-  const seriesAb = isBidi ? buildSeriesSvg(ptsAb, CHART_COLOR_AB, X, Y) : "";
-  let legend = "";
-  if(isBidi){
-    legend = `<circle cx="${W-176}" cy="26" r="4" fill="${cAcc}"/><text x="${W-168}" y="29" font-size="10" fill="${cMut}">Bezug</text>
-              <circle cx="${W-100}" cy="26" r="4" fill="${CHART_COLOR_AB}"/><text x="${W-92}" y="29" font-size="10" fill="${cMut}">Einspeisung</text>`;
-  }
-
-  box.innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-       <text x="${L}" y="11" font-size="11" font-weight="700" fill="${cMut}">${meta.label} – je Ableseperiode (${meta.einheit})</text>
-       ${grid}
-       ${seriesB}${seriesAb}${labels}${legend}
-     </svg>`;
-}
-function niceStep(raw){
-  const p = Math.pow(10, Math.floor(Math.log10(raw||1)));
-  for(const m of [1,2,2.5,5,10]) if(raw <= m*p) return m*p;
-  return 10*p;
-}
-
-function renderList(){
-  const list = document.getElementById("list");
-  const fReadings = getFilteredReadings();
-
-  document.getElementById("count").textContent =
-    fReadings.length ? "(" + fReadings.length + ")" : "";
-
-  if(!fReadings.length){
-    list.innerHTML = '<div class="empty">Im gewählten Zeitraum gibt es keine Einträge.</div>';
-    return;
-  }
-
-  const per = {};
-  for(const p of computeConsumption()) per[p.datum] = p;
-
-  let html = "";
-  for(let i=fReadings.length-1; i>=0; i--){
-    const r = fReadings[i], p = per[r.datum];
-    html += '<div class="entry"><div class="head"><b>' + deDate(r.datum) + "</b><span>" +
-            (p ? p.tage + " Tage seit letzter Ablesung" : "Erste Ablesung") +
-            '</span><button class="del" title="Eintrag löschen" aria-label="Eintrag löschen" data-d="' +
-            r.datum + '">✕</button></div><div class="vals">';
-    for(const k of KEYS){
-      const m = UTILITIES[k];
-      const color = utilColorValue(k);
-      if(bidirectional.includes(k)){
-        let subB = "";
-        if(p){
-          if(p[k+"_wechsel"]) subB = '<i class="wechsel">Zählerwechsel</i>';
-          else if(p[k] !== null) subB = `<i style="color:${color}">+ ${fmt(p[k])} ${m.einheit}</i>`;
-        }
-        html += '<div class="val"><small>' + m.label + " Bezug</small><b>" + fmt(r[k]) + "</b>" + subB + "</div>";
-        let subAb = "";
-        if(p){
-          if(p[k+"_ab_wechsel"]) subAb = '<i class="wechsel">Zählerwechsel</i>';
-          else if(p[k+"_ab"] !== null) subAb = `<i style="color:${CHART_COLOR_AB}">+ ${fmt(p[k+"_ab"])} ${m.einheit}</i>`;
-        }
-        html += '<div class="val"><small>' + m.label + " Einspeisung</small><b>" + fmt(r[k+"_ab"]) + "</b>" + subAb + "</div>";
-      }else{
-        let sub = "";
-        if(p){
-          if(p[k+"_wechsel"]) sub = '<i class="wechsel">Zählerwechsel</i>';
-          else if(p[k] !== null) sub = `<i style="color:${color}">+ ${fmt(p[k])} ${m.einheit}</i>`;
-        }
-        html += '<div class="val"><small>' + m.label + "</small><b>" + fmt(r[k]) + "</b>" + sub + "</div>";
-      }
-    }
-    html += "</div></div>";
-  }
-  list.innerHTML = html;
-  list.querySelectorAll(".del").forEach(b => b.onclick = () => deleteReading(b.dataset.d));
-}
-
-function renderAll(){ renderSeg(); renderMeterInfo(); renderStats(); renderChart(); renderList(); }
-
-/* ---------- Export-Spalten (berücksichtigen Zweirichtungszähler) ---------- */
-function exportColumns(){
-  const cols = [];
-  for(const k of KEYS){
-    if(bidirectional.includes(k)){ cols.push({k, sub:"bezug"}); cols.push({k, sub:"ab"}); }
-    else cols.push({k, sub:null});
-  }
-  return cols;
-}
-function columnHeader(col){
-  const m = UTILITIES[col.k];
-  if(col.sub === "bezug") return `${m.label} Bezug (${m.einheit})`;
-  if(col.sub === "ab") return `${m.label} Einspeisung (${m.einheit})`;
-  return `${m.label} (${m.einheit})`;
-}
-function columnValue(row, col){
-  return col.sub === "ab" ? row[col.k+"_ab"] : row[col.k];
-}
-
-/* ---------- Export / Import ---------- */
-function download(name, blob){
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  document.body.appendChild(a); a.click();
-  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 800);
-}
-function exportBackup(){
-  if(!readings.length){ setStatus("Keine Daten vorhanden."); return; }
-  const payload = {
-    version: 2,
-    readings, customUtilities, meterNumbers, bidirectional, activeKeys, prices, pricesAb
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
-  download("verbrauchsdaten.json", blob);
-  setStatus("Sicherung erstellt.");
-  flashButton("backupbtn");
-}
-function importBackup(file){
-  const fr = new FileReader();
-  fr.onload = () => {
-    let raw;
-    try{ raw = JSON.parse(fr.result); }
-    catch(e){ alert("Die Datei konnte nicht gelesen werden (kein gültiges JSON)."); return; }
-
-    let rawReadings, settings = null;
-    if(Array.isArray(raw)){
-      rawReadings = raw;
-    }else if(raw && Array.isArray(raw.readings)){
-      rawReadings = raw.readings;
-      settings = raw;
-    }else{
-      alert("Die Datei enthält keine gültigen Einträge."); return;
-    }
-
-    if(settings){
-      customUtilities = Object.assign({}, customUtilities, settings.customUtilities || {});
-      meterNumbers = Object.assign({}, meterNumbers, settings.meterNumbers || {});
-      bidirectional = Array.from(new Set([...bidirectional, ...(settings.bidirectional || [])]));
-      prices = Object.assign({}, prices, settings.prices || {});
-      pricesAb = Object.assign({}, pricesAb, settings.pricesAb || {});
-      if(Array.isArray(settings.activeKeys)) activeKeys = Array.from(new Set([...activeKeys, ...settings.activeKeys]));
-      localStorage.setItem(LS_CUSTOM, JSON.stringify(customUtilities));
-      localStorage.setItem(LS_METERNR, JSON.stringify(meterNumbers));
-      localStorage.setItem(LS_BIDI, JSON.stringify(bidirectional));
-      localStorage.setItem(LS_ACTIVE, JSON.stringify(activeKeys));
-      localStorage.setItem(LS_PRICES, JSON.stringify(prices));
-      localStorage.setItem(LS_PRICES_AB, JSON.stringify(pricesAb));
-      updateActiveUtilities();
-      if (!activeKeys.includes(currentUtil)) {
-        currentUtil = activeKeys[0];
-        localStorage.setItem(LS_UTIL, currentUtil);
-      }
-    }
-
-    const neu = sanitize(rawReadings);
-    if(!neu.length){ alert("Die Datei enthält keine gültigen Einträge."); return; }
-    let added = 0, replaced = 0;
-    for(const n of neu){
-      const ex = readings.find(r => r.datum === n.datum);
-      if(ex){ Object.assign(ex, n); replaced++; }
-      else { readings.push(n); added++; }
-    }
-    readings.sort((a,b)=> a.datum < b.datum ? -1 : 1);
-    saveData();
-    renderSettings(); renderPrices(); renderFormInputs(); renderAll();
-    setStatus(added + " Einträge übernommen" + (replaced ? ", " + replaced + " aktualisiert." : "."));
-    flashButton("importbtn");
-  };
-  fr.readAsText(file);
-}
-function exportCSV(){
-  const per = computeConsumption();
-  const num = v => v === null || v === undefined ? "" : String(v).replace(".",",");
-  const cols = exportColumns();
-  const headers = cols.map(columnHeader).join(";");
-
-  let s = "\uFEFFZählerstände\nDatum;" + headers + "\n";
-  if(cols.some(c => meterNumbers[c.k])){
-    s += "Zähler-Nr.;" + cols.map(c => meterNumbers[c.k] || "").join(";") + "\n";
-  }
-  for(const r of readings) {
-    s += deDate(r.datum) + ";" + cols.map(c => num(columnValue(r,c))).join(";") + "\n";
-  }
-
-  s += "\nVerbrauch je Zeitraum\nDatum;Tage;" + headers + "\n";
-  for(const p of per) {
-    s += deDate(p.datum) + ";" + p.tage + ";" + cols.map(c => num(columnValue(p,c))).join(";") + "\n";
-  }
-
-  download("Verbrauch_" + new Date().toISOString().slice(0,10) + ".csv", new Blob([s], {type:"text/csv;charset=utf-8"}));
-  setStatus("Als CSV exportiert (in Excel zu öffnen).");
-  flashButton("csvbtn");
-}
-function exportExcel(){
-  if(!readings.length){ setStatus("Keine Daten zum Exportieren."); return; }
-  const build = () => {
-    const wb = XLSX.utils.book_new();
-    const cols = exportColumns();
-    const headers = cols.map(columnHeader);
-
-    const s1 = [["Datum", ...headers]];
-    if(cols.some(c => meterNumbers[c.k])) s1.push(["Zähler-Nr.", ...cols.map(c => meterNumbers[c.k] || "")]);
-    for(const r of readings) s1.push([deDate(r.datum), ...cols.map(c => columnValue(r,c))]);
-    const ws1 = XLSX.utils.aoa_to_sheet(s1);
-    ws1["!cols"] = [{wch:12}, ...cols.map(()=>({wch:13}))];
-    XLSX.utils.book_append_sheet(wb, ws1, "Zählerstände");
-
-    const s2 = [["Datum", "Tage", ...headers]];
-    for(const p of computeConsumption()) s2.push([deDate(p.datum), p.tage, ...cols.map(c => columnValue(p,c))]);
-    const ws2 = XLSX.utils.aoa_to_sheet(s2);
-    ws2["!cols"] = [{wch:12}, {wch:6}, ...cols.map(()=>({wch:13}))];
-    XLSX.utils.book_append_sheet(wb, ws2, "Verbrauch");
-
-    XLSX.writeFile(wb, "Verbrauch_" + new Date().toISOString().slice(0,10) + ".xlsx");
-    setStatus("Excel-Datei erstellt.");
-    flashButton("xlsxbtn");
-  };
-  if(window.XLSX){ build(); return; }
-  setStatus("Lade Excel-Modul …");
-  const sc = document.createElement("script");
-  sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-  sc.onload = build;
-  sc.onerror = () => {
-    if(confirm("Für den Excel-Export wird einmalig eine Internetverbindung benötigt.\nStattdessen als CSV-Datei exportieren (funktioniert offline, in Excel zu öffnen)?"))
-      exportCSV();
-    else setStatus("");
-  };
-  document.head.appendChild(sc);
-}
-
-/* ---------- Theme ---------- */
-function setAccent(){
-  const c = utilColorValue(currentUtil);
-  document.documentElement.style.setProperty("--accent", c);
-  document.documentElement.style.setProperty("--accent-soft", c + "24");
-}
-function applyTheme(t){
-  const dark = t === "dark" || (t === "system" &&
-    window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
-  setAccent(); renderStats(); renderChart();
-}
-function toggleTheme(){
-  const cur = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  localStorage.setItem(LS_THEME, cur);
-  applyTheme(cur);
-}
-
-/* ---------- Start ------------ */
-document.getElementById("form").addEventListener("submit", addReading);
-document.getElementById("themebtn").addEventListener("click", toggleTheme);
-
-document.getElementById("xlsxbtn").addEventListener("click", exportExcel);
-document.getElementById("csvbtn").addEventListener("click", exportCSV);
-document.getElementById("backupbtn").addEventListener("click", exportBackup);
-document.getElementById("importbtn").addEventListener("click", () => document.getElementById("importfile").click());
-document.getElementById("importfile").addEventListener("change", function(){
-  if(this.files[0]) importBackup(this.files[0]);
-  this.value = "";
-});
-
-document.getElementById("f_start").addEventListener("change", handleManualFilter);
-document.getElementById("f_ende").addEventListener("change", handleManualFilter);
-document.getElementById("btn_filter_alle").addEventListener("click", () => {
-  document.getElementById("f_start").value = "";
-  document.getElementById("f_ende").value = "";
-  handleManualFilter();
-});
-document.getElementById("btn_filter_jahr").addEventListener("click", () => setQuickFilter(365));
-document.getElementById("btn_filter_letztesjahr").addEventListener("click", () => setQuickFilter('letztesJahr'));
-
-document.getElementById("f_datum").value = new Date().toISOString().slice(0,10);
-
-renderSettings();
-renderPrices();
-renderFormInputs();
-loadData();
-applyTheme(localStorage.getItem(LS_THEME) || "system");
-renderAll();
-</script>
-</body>
-</html>
+  const def = customUtilities[key];
+  if(!def) return;
+  if(!confirm("Zähler „" + def.label + "“ inkl. Definition entfernen? Bereits erfasste Messwerte bleiben in den Daten erhalten, werden aber nicht mehr angezeigt.")) return;
+  
+  delete customUtilities[key];
+  activeKeys = activeKeys.filter(k => k !== key);
+  bidirectional = bidirectional.filter(k => k !== key);
+  delete meterNumbers[key];
+  delete prices[key];
+  delete pricesAb[key];
+  delete pricesBase[key];
+  
+  localStorage.setItem(LS_CUSTOM, JSON.stringify(customUtilities));
+  localStorage.setItem(LS_ACTIVE, JSON.stringify(activeKeys));
+  localStorage.setItem(LS_BIDI, JSON.stringify(bidirectional));
+  localStorage.setItem(LS_METERNR, JSON.stringify(meterNumbers));
